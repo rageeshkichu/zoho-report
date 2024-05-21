@@ -44351,3 +44351,37 @@ def purchase_by_vendor_custom(request):
             return render(request,'zohomodules/Reports/purchase_by_vendor.html', context)
     else:
         return redirect('/')
+
+
+
+def low_stock_summary(request):
+    if 'login_id' in request.session:
+        log_id = request.session['login_id']
+        log_details = LoginDetails.objects.get(id=log_id)
+        if log_details.user_type == 'Company':
+            cmp = CompanyDetails.objects.get(login_details=log_details)
+            dash_details = CompanyDetails.objects.get(login_details=log_details)
+        else:
+            cmp = StaffDetails.objects.get(login_details=log_details).company
+            dash_details = StaffDetails.objects.get(login_details=log_details)
+
+        allmodules = ZohoModules.objects.get(company=cmp)
+
+        # Fetch items related to the company
+        items = Items.objects.filter(company=cmp)
+        
+        for item in items:
+            item.stock_value = (item.current_stock) * (item.opening_stock_per_unit)
+
+        context = {
+            'cmp': cmp,
+            'details': dash_details,
+            'log_details': log_details,
+            'items': items,
+            'allmodules': allmodules
+        }
+        return render(request, 'zohomodules/Reports/low_stock_summary.html', context)
+    else:
+        # Handle the case when the user is not logged in
+        return redirect('/')
+    

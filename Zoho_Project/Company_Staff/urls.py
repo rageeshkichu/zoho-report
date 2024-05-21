@@ -940,6 +940,9 @@ urlpatterns = [
     path('purchase_by_vendor_mail',views.purchase_by_vendor_mail,name='purchase_by_vendor_mail'),
     path('purchase_by_vendor_custom',views.purchase_by_vendor_custom,name='purchase_by_vendor_custom'),
 
+
+    path('low_stock_summary', views.low_stock_summary, name='low_stock_summary'),
+
     re_path(r'^static/(?P<path>.*)$', serve,{'document_root': settings.STATIC_ROOT}),
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS)
