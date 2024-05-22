@@ -104,6 +104,10 @@ from django.template.response import TemplateResponse
 from .models import LoginDetails, CompanyDetails, StaffDetails, ZohoModules, Items, SalesOrderItems
 from django.db.models import Sum,F,IntegerField,Q  
 
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from datetime import datetime
+
 # Create your views here.
 
 
@@ -44384,4 +44388,120 @@ def low_stock_summary(request):
     else:
         # Handle the case when the user is not logged in
         return redirect('/')
-    
+
+
+def customize_low_stock_summary(request):
+    if 'login_id' in request.session:
+        log_id = request.session['login_id']
+        log_details = LoginDetails.objects.get(id=log_id)
+        if log_details.user_type == 'Company':
+            cmp = CompanyDetails.objects.get(login_details=log_details)
+            dash_details = CompanyDetails.objects.get(login_details=log_details)
+        else:
+            cmp = StaffDetails.objects.get(login_details=log_details).company
+            dash_details = StaffDetails.objects.get(login_details=log_details)
+
+        allmodules = ZohoModules.objects.get(company=cmp)
+
+        # Get date range from request and convert to timezone-aware datetime objects
+        from_date_str = request.GET.get('from_date')
+        to_date_str = request.GET.get('to_date')
+
+        if from_date_str and to_date_str:
+            from_date = timezone.make_aware(datetime.combine(parse_date(from_date_str), datetime.min.time()))
+            to_date = timezone.make_aware(datetime.combine(parse_date(to_date_str), datetime.max.time()))
+        else:
+            from_date = None
+            to_date = None
+
+        # Fetch items related to the company and filter by date if provided
+        if from_date and to_date:
+            items = Items.objects.filter(company=cmp, date__range=[from_date, to_date])
+        else:
+            items = Items.objects.filter(company=cmp)
+
+        # Calculate stock value for each item
+        for item in items:
+            item.stock_value = item.current_stock * item.opening_stock_per_unit
+
+        context = {
+            'cmp': cmp,
+            'details': dash_details,
+            'log_details': log_details,
+            'items': items,
+            'allmodules': allmodules,
+            'from_date': from_date_str,
+            'to_date': to_date_str,
+        }
+        return render(request, 'zohomodules/Reports/low_stock_summary.html', context)
+    else:
+        # Handle the case when the user is not logged in
+        return redirect('/')
+
+
+def shareLowStockSummaryToEmail(request):
+    if 'login_id' in request.session:
+        log_id = request.session['login_id']
+        log_details= LoginDetails.objects.get(id=log_id)
+        if log_details.user_type == 'Company':
+            cmp = CompanyDetails.objects.get(login_details = log_details)
+            dash_details = CompanyDetails.objects.get(login_details=log_details)
+        else:
+            cmp = StaffDetails.objects.get(login_details = log_details).company
+            dash_details = StaffDetails.objects.get(login_details=log_details)
+
+
+            allmodules = ZohoModules.objects.filter(company=cmp, status='New')
+
+        try:
+            if request.method == 'POST':
+                emails_string = request.POST['email_ids']
+
+                # Split the string by commas and remove any leading or trailing whitespace
+                emails_list = [email.strip() for email in emails_string.split(',')]
+                email_message = request.POST['email_message']
+
+               
+                from_date = request.POST['start']
+                to_date = request.POST['end']
+               
+
+                
+                if from_date and to_date:
+                    items = Items.objects.filter(company=cmp, date__range=[from_date, to_date])
+                else:
+                    items = Items.objects.filter(company=cmp)
+
+                # Calculate stock value for each item
+                for item in items:
+                    item.stock_value = item.current_stock * item.opening_stock_per_unit
+
+                context = {
+                    'cmp': cmp,
+                    'details': dash_details,
+                    'log_details': log_details,
+                    'items': items,
+                    'allmodules': allmodules,
+                    'from_date': from_date,
+                    'to_date': to_date,
+                }
+                template_path = 'zohomodules/Reports/lowstocksummarypdf.html'
+                template = get_template(template_path)
+
+                html  = template.render(context)
+                result = BytesIO()
+                pdf = pisa.pisaDocument(BytesIO(html.encode("ISO-8859-1")), result)
+                pdf = result.getvalue()
+                filename = f'low stock summary report'
+                subject = f"low stock summary Report"
+                # from django.core.mail import EmailMessage as EmailMsg
+                email = EmailMsg(subject, f"Hi,\nPlease find the attached Low Stock Summary Report. \n{email_message}\n\n--\nRegards,\n{cmp.company_name}\n{cmp.address}\n{cmp.state} - {cmp.country}\n{cmp.contact}", from_email=settings.EMAIL_HOST_USER, to=emails_list)
+                email.attach(filename, pdf, "application/pdf")
+                email.send(fail_silently=False)
+
+                messages.success(request, 'Report details has been shared via email successfully..!')
+                return redirect(low_stock_summary)
+        except Exception as e:
+            print(e)
+            messages.error(request, f'{e}')
+            return redirect(low_stock_summary)

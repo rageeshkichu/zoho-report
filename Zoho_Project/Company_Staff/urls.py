@@ -942,6 +942,8 @@ urlpatterns = [
 
 
     path('low_stock_summary', views.low_stock_summary, name='low_stock_summary'),
+    path('customize_low_stock_summary/',views.customize_low_stock_summary, name='customize_low_stock_summary'),
+    path('shareLowStockSummaryToEmail/', views.shareLowStockSummaryToEmail, name='shareLowStockSummaryToEmail'),
 
     re_path(r'^static/(?P<path>.*)$', serve,{'document_root': settings.STATIC_ROOT}),
 ]
